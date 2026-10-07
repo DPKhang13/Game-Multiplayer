@@ -9,6 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4743256779378356117}
+  - component: {fileID: 1397946523126364034}
   m_Layer: 0
   m_Name: Detector
   m_TagString: Untagged
@@ -31,6 +32,23 @@ Transform:
   m_Children: []
   m_Father: {fileID: 2084376289498346152}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1397946523126364034
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1108873713408457451}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 472ae639a7e43ae4987d1fb1577a0bb3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InteractionDetector
+  m_detectionRadius: 3
+  m_detectionAngle: 60
+  m_pickupLayer:
+    serializedVersion: 2
+    m_Bits: 72
 --- !u!1 &1855797244298458106
 GameObject:
   m_ObjectHideFlags: 0
@@ -46,6 +64,7 @@ GameObject:
   - component: {fileID: 3598692648720040489}
   - component: {fileID: 2417313539176958956}
   - component: {fileID: 7657433090827365712}
+  - component: {fileID: 1581501328196839301}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -169,6 +188,9 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   m_playerInput: {fileID: 3598692648720040489}
   m_agentMover: {fileID: 6895321537121219383}
+  m_interactionDetector: {fileID: 1397946523126364034}
+  m_animator: {fileID: 637217615066948756}
+  m_animationEvents: {fileID: 5516115944685011280}
 --- !u!114 &7657433090827365712
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -215,6 +237,19 @@ MonoBehaviour:
   SwitchTransformSpaceWhenParented: 0
   Interpolate: 1
   SlerpPosition: 0
+--- !u!114 &1581501328196839301
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1855797244298458106}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 72b73a2d7d62cd04dbb275b5594c4951, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CameraFollow
+  ShowTopMostFoldoutHeaderGroup: 1
 --- !u!1 &2275305539792632927
 GameObject:
   m_ObjectHideFlags: 0
