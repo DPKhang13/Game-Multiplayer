@@ -48,7 +48,7 @@ public class PlayerController : NetworkBehaviour
 
     private void HandlePickUpPressed()
     {
-        if (!IsOwner)
+        if (!IsOwner || !IsSpawned)
             return;
 
         if (m_isInteracting || m_isChopping)
@@ -63,7 +63,7 @@ public class PlayerController : NetworkBehaviour
 
     private void HandleActionPressed()
     {
-        if (!IsOwner)
+        if (!IsOwner || !IsSpawned)
             return;
 
         if (m_isChopping || m_isInteracting)
@@ -81,7 +81,6 @@ public class PlayerController : NetworkBehaviour
         base.OnNetworkSpawn();
 
         m_interactionDetector.Initialize(IsOwner);
-
         m_heldObjectType.OnValueChanged += HandleHeldItemChanged;
 
         HandleItemOnJoin();
@@ -96,6 +95,9 @@ public class PlayerController : NetworkBehaviour
 
     private void HandleChopAction()
     {
+        if (!IsOwner || !IsSpawned)
+            return;
+
         if (m_heldObjectType.Value is ObjectType.Axe or ObjectType.PickAxe)
         {
             if (m_interactionDetector.ClosestInteractable is ResourceNode)
@@ -124,10 +126,7 @@ public class PlayerController : NetworkBehaviour
 
     private void HandleItemOnJoin()
     {
-        if (m_heldObjectType.Value != ObjectType.None)
-        {
-            HandleHeldItemChanged(ObjectType.None, m_heldObjectType.Value);
-        }
+        HandleHeldItemChanged(ObjectType.None, m_heldObjectType.Value);
     }
 
     private void HandleHeldItemChanged(ObjectType previousValue, ObjectType newValue)
@@ -144,15 +143,61 @@ public class PlayerController : NetworkBehaviour
         m_isChopping = false;
     }
 
+    // ==================================================
+    // INTERACTION SYSTEM
+    // ==================================================
+
     private void HandleInteractAction()
     {
+        if (!IsOwner || !IsSpawned)
+            return;
+
         if (m_interactionDetector.ClosestInteractable is PickableBase)
         {
             RequestPickUpServerRpc(
                 m_interactionDetector.ClosestInteractable.NetworkObject.NetworkObjectId
             );
         }
+        else if (m_interactionDetector.ClosestInteractable is ResourcePallet)
+        {
+            RequestGiveItemServerRpc(
+                m_interactionDetector.ClosestInteractable.NetworkObject.NetworkObjectId
+            );
+        }
     }
+
+    // ==================================================
+    // RESOURCE PALLET
+    // ==================================================
+
+    [Rpc(SendTo.Server)]
+    private void RequestGiveItemServerRpc(ulong networkObjectId)
+    {
+        if (!NetworkManager.SpawnManager.SpawnedObjects
+            .TryGetValue(networkObjectId, out NetworkObject target))
+        {
+            return;
+        }
+
+        if (!target.TryGetComponent(out ResourcePallet resourcePallet))
+            return;
+
+        ObjectType heldType = m_heldObjectType.Value;
+
+        // Chi cho phep giao Wood hoac Stone.
+        if (heldType is not (ObjectType.Wood or ObjectType.Stone))
+            return;
+
+        if (resourcePallet.Interact(heldType))
+        {
+            m_heldObjectType.Value = ObjectType.None;
+            m_heldNetworkObjectId.Value = ulong.MaxValue;
+        }
+    }
+
+    // ==================================================
+    // PICKUP SYSTEM
+    // ==================================================
 
     [Rpc(SendTo.Server)]
     private void RequestPickUpServerRpc(ulong networkObjectId)
@@ -173,15 +218,20 @@ public class PlayerController : NetworkBehaviour
             return;
         }
 
-        // Drop item cu neu player dang cam mot item khac.
+        // Neu dang cam item, drop item cu truoc.
         if (m_heldObjectType.Value != ObjectType.None)
         {
-            DropCurrentItem();
+            if (!DropCurrentItem())
+                return;
         }
 
         if (pickableItem is PickableTool)
         {
             m_heldNetworkObjectId.Value = networkObjectId;
+        }
+        else
+        {
+            m_heldNetworkObjectId.Value = ulong.MaxValue;
         }
 
         m_heldObjectType.Value = pickableItem.ObjectType;
@@ -189,37 +239,41 @@ public class PlayerController : NetworkBehaviour
     }
 
     // ==================================================
-    // DROP ITEM - AXE, PICKAXE, WOOD, STONE
+    // DROP SYSTEM - AXE / PICKAXE / WOOD / STONE
     // ==================================================
 
-    private void DropCurrentItem()
+    private bool DropCurrentItem()
     {
         if (!IsServer)
-            return;
+            return false;
 
         ObjectType heldType = m_heldObjectType.Value;
 
         if (heldType == ObjectType.None)
         {
             m_heldNetworkObjectId.Value = ulong.MaxValue;
-            return;
+            return true;
         }
 
-        // Truong hop 1: Player dang cam Axe hoac Pickaxe.
+        // Drop Axe hoac Pickaxe.
         if (heldType is ObjectType.Axe or ObjectType.PickAxe)
         {
-            if (NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(
-                m_heldNetworkObjectId.Value,
-                out NetworkObject target))
+            if (!NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(
+                m_heldNetworkObjectId.Value, out NetworkObject target))
             {
-                if (target.TryGetComponent(out PickableTool pickableItem))
-                {
-                    pickableItem.Drop(transform.position);
-                }
+                Debug.LogWarning("Held tool NetworkObject not found.");
+                return false;
             }
-        }
 
-        // Truong hop 2: Player dang cam Wood hoac Stone.
+            if (!target.TryGetComponent(out PickableTool pickableItem))
+            {
+                Debug.LogWarning("Held NetworkObject is not a PickableTool.");
+                return false;
+            }
+
+            pickableItem.Drop(transform.position);
+        }
+        // Drop Wood hoac Stone.
         else if (heldType is ObjectType.Wood or ObjectType.Stone)
         {
             if (m_resourceSpawner == null)
@@ -227,35 +281,40 @@ public class PlayerController : NetworkBehaviour
                 m_resourceSpawner = FindAnyObjectByType<ResourceSpawner>();
             }
 
-            if (m_resourceSpawner != null && m_resourceSpawner.IsSpawned)
-            {
-                m_resourceSpawner.SpawnResource(
-                    heldType,
-                    transform.position
-                );
-            }
-            else
+            if (m_resourceSpawner == null || !m_resourceSpawner.IsSpawned)
             {
                 Debug.LogWarning(
                     "ResourceSpawner is missing or not spawned. Cannot drop resource."
                 );
-                return;
+                return false;
             }
+
+            m_resourceSpawner.SpawnResource(
+                heldType,
+                transform.position
+            );
+        }
+        else
+        {
+            Debug.LogWarning($"Unsupported item type: {heldType}");
+            return false;
         }
 
         // Reset item state.
         m_heldObjectType.Value = ObjectType.None;
         m_heldNetworkObjectId.Value = ulong.MaxValue;
+
+        return true;
     }
 
     // ==================================================
-    // NETWORK DISCONNECT / DESPAWN HANDLING
+    // DISCONNECT & NETWORK DESPAWN
     // ==================================================
 
     public override void OnNetworkPreDespawn()
     {
-        // Server xu ly drop truoc khi player despawn.
-        // Khong spawn item khi toan bo server dang shutdown.
+        // Server xu ly drop truoc khi Player despawn.
+        // Khong drop khi toan bo NetworkManager dang shutdown.
         if (IsServer &&
             NetworkManager != null &&
             !NetworkManager.ShutdownInProgress)
@@ -270,8 +329,7 @@ public class PlayerController : NetworkBehaviour
     {
         m_heldObjectType.OnValueChanged -= HandleHeldItemChanged;
 
-        // Chi cleanup event subscriptions tai day.
-        // Khong goi RPC trong OnNetworkDespawn.
+        // Chi huy dang ky event, khong gui RPC.
         if (IsOwner)
         {
             m_animationEvents.OnInteract -= HandleInteractAction;
@@ -288,7 +346,7 @@ public class PlayerController : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsOwner)
+        if (!IsOwner || !IsSpawned)
             return;
 
         Vector2 movementInput = m_playerInput.MovementInput;
