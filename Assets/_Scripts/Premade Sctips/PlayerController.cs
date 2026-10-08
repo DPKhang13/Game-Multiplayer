@@ -1,4 +1,4 @@
-using System;
+
 using Unity.Netcode;
 using UnityEngine;
 
@@ -6,38 +6,38 @@ public class PlayerController : NetworkBehaviour
 {
     [SerializeField]
     private MyPlayerInput m_playerInput;
+
     [SerializeField]
     private AgentMover m_agentMover;
 
     [SerializeField]
     private InteractionDetector m_interactionDetector;
+
     [SerializeField]
     private Animator m_animator;
+
     [SerializeField]
     private AnimationEvents m_animationEvents;
 
     private bool m_isInteracting, m_isChopping;
+
     [SerializeField]
     private GameObject m_axeModel, m_pickAxeModel, m_woodModel, m_stoneModel;
 
+    private ResourceSpawner m_resourceSpawner;
 
     private NetworkVariable<ulong> m_heldNetworkObjectId = new(ulong.MaxValue);
     private NetworkVariable<ObjectType> m_heldObjectType = new(ObjectType.None);
+
+    private void Awake()
+    {
+        m_resourceSpawner = FindAnyObjectByType<ResourceSpawner>();
+    }
 
     private void OnEnable()
     {
         m_playerInput.OnPickUpPressed += HandlePickUpPressed;
         m_playerInput.OnInteractPressed += HandleActionPressed;
-    }
-
-    private void HandlePickUpPressed()
-    {
-        if (m_isInteracting || m_isChopping)
-            return;
-        if (m_interactionDetector.ClosestInteractable == null)
-            return;
-        m_animator.SetBool("Interact", true);
-        m_isInteracting = true;
     }
 
     private void OnDisable()
@@ -46,14 +46,29 @@ public class PlayerController : NetworkBehaviour
         m_playerInput.OnInteractPressed -= HandleActionPressed;
     }
 
+    private void HandlePickUpPressed()
+    {
+        if (!IsOwner)
+            return;
+
+        if (m_isInteracting || m_isChopping)
+            return;
+
+        if (m_interactionDetector.ClosestInteractable == null)
+            return;
+
+        m_animator.SetBool("Interact", true);
+        m_isInteracting = true;
+    }
+
     private void HandleActionPressed()
     {
-        if (IsOwner == false)
-        {
+        if (!IsOwner)
             return;
-        }
+
         if (m_isChopping || m_isInteracting)
             return;
+
         if (m_heldObjectType.Value is ObjectType.Axe or ObjectType.PickAxe)
         {
             m_isChopping = true;
@@ -64,9 +79,13 @@ public class PlayerController : NetworkBehaviour
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
+
         m_interactionDetector.Initialize(IsOwner);
+
         m_heldObjectType.OnValueChanged += HandleHeldItemChanged;
+
         HandleItemOnJoin();
+
         if (IsOwner)
         {
             m_animationEvents.OnInteract += HandleInteractAction;
@@ -82,7 +101,8 @@ public class PlayerController : NetworkBehaviour
             if (m_interactionDetector.ClosestInteractable is ResourceNode)
             {
                 RequestResourceNodeInteractionServerRpc(
-                    m_interactionDetector.ClosestInteractable.NetworkObject.NetworkObjectId);
+                    m_interactionDetector.ClosestInteractable.NetworkObject.NetworkObjectId
+                );
             }
         }
     }
@@ -91,8 +111,10 @@ public class PlayerController : NetworkBehaviour
     private void RequestResourceNodeInteractionServerRpc(ulong networkObjectId)
     {
         if (!NetworkManager.SpawnManager.SpawnedObjects
-               .TryGetValue(networkObjectId, out NetworkObject target))
+            .TryGetValue(networkObjectId, out NetworkObject target))
+        {
             return;
+        }
 
         if (!target.TryGetComponent(out ResourceNode node))
             return;
@@ -127,7 +149,8 @@ public class PlayerController : NetworkBehaviour
         if (m_interactionDetector.ClosestInteractable is PickableBase)
         {
             RequestPickUpServerRpc(
-                m_interactionDetector.ClosestInteractable.NetworkObject.NetworkObjectId);
+                m_interactionDetector.ClosestInteractable.NetworkObject.NetworkObjectId
+            );
         }
     }
 
@@ -139,43 +162,55 @@ public class PlayerController : NetworkBehaviour
         {
             return;
         }
+
         if (!target.TryGetComponent(out PickableBase pickableItem))
         {
             return;
         }
+
         if (!pickableItem.CanBePickedUp)
         {
             return;
         }
+
+        // Drop item cu neu player dang cam mot item khac.
         if (m_heldObjectType.Value != ObjectType.None)
         {
             DropCurrentItem();
         }
+
         if (pickableItem is PickableTool)
         {
             m_heldNetworkObjectId.Value = networkObjectId;
         }
 
-
         m_heldObjectType.Value = pickableItem.ObjectType;
         pickableItem.PickUp();
     }
 
+    // ==================================================
+    // DROP ITEM - AXE, PICKAXE, WOOD, STONE
+    // ==================================================
+
     private void DropCurrentItem()
     {
-        if (IsServer == false)
-        {
+        if (!IsServer)
             return;
-        }
-        if (m_heldObjectType.Value == ObjectType.None)
+
+        ObjectType heldType = m_heldObjectType.Value;
+
+        if (heldType == ObjectType.None)
         {
             m_heldNetworkObjectId.Value = ulong.MaxValue;
             return;
         }
-        if (m_heldObjectType.Value is ObjectType.Axe or ObjectType.PickAxe)
+
+        // Truong hop 1: Player dang cam Axe hoac Pickaxe.
+        if (heldType is ObjectType.Axe or ObjectType.PickAxe)
         {
             if (NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(
-                m_heldNetworkObjectId.Value, out NetworkObject target))
+                m_heldNetworkObjectId.Value,
+                out NetworkObject target))
             {
                 if (target.TryGetComponent(out PickableTool pickableItem))
                 {
@@ -183,21 +218,60 @@ public class PlayerController : NetworkBehaviour
                 }
             }
         }
+
+        // Truong hop 2: Player dang cam Wood hoac Stone.
+        else if (heldType is ObjectType.Wood or ObjectType.Stone)
+        {
+            if (m_resourceSpawner == null)
+            {
+                m_resourceSpawner = FindAnyObjectByType<ResourceSpawner>();
+            }
+
+            if (m_resourceSpawner != null && m_resourceSpawner.IsSpawned)
+            {
+                m_resourceSpawner.SpawnResource(
+                    heldType,
+                    transform.position
+                );
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "ResourceSpawner is missing or not spawned. Cannot drop resource."
+                );
+                return;
+            }
+        }
+
+        // Reset item state.
         m_heldObjectType.Value = ObjectType.None;
         m_heldNetworkObjectId.Value = ulong.MaxValue;
+    }
+
+    // ==================================================
+    // NETWORK DISCONNECT / DESPAWN HANDLING
+    // ==================================================
+
+    public override void OnNetworkPreDespawn()
+    {
+        // Server xu ly drop truoc khi player despawn.
+        // Khong spawn item khi toan bo server dang shutdown.
+        if (IsServer &&
+            NetworkManager != null &&
+            !NetworkManager.ShutdownInProgress)
+        {
+            DropCurrentItem();
+        }
+
+        base.OnNetworkPreDespawn();
     }
 
     public override void OnNetworkDespawn()
     {
         m_heldObjectType.OnValueChanged -= HandleHeldItemChanged;
 
-        // Server tự xử lý item khi player disconnect.
-        // Không gửi RPC trong OnNetworkDespawn.
-        if (IsServer)
-        {
-            DropHeldToolOnDespawn();
-        }
-
+        // Chi cleanup event subscriptions tai day.
+        // Khong goi RPC trong OnNetworkDespawn.
         if (IsOwner)
         {
             m_animationEvents.OnInteract -= HandleInteractAction;
@@ -208,40 +282,22 @@ public class PlayerController : NetworkBehaviour
         base.OnNetworkDespawn();
     }
 
-    private void DropHeldToolOnDespawn()
-    {
-        if (m_heldObjectType.Value is not (ObjectType.Axe or ObjectType.PickAxe))
-        {
-            return;
-        }
-
-        if (NetworkManager == null || NetworkManager.SpawnManager == null)
-        {
-            return;
-        }
-
-        if (NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(
-            m_heldNetworkObjectId.Value,
-            out NetworkObject target))
-        {
-            if (target.TryGetComponent(out PickableTool pickableItem))
-            {
-                pickableItem.Drop(transform.position);
-            }
-        }
-    }
+    // ==================================================
+    // PLAYER MOVEMENT
+    // ==================================================
 
     private void Update()
     {
-        if (IsOwner == false)
-        {
+        if (!IsOwner)
             return;
-        }
+
         Vector2 movementInput = m_playerInput.MovementInput;
+
         if (m_isChopping || m_isInteracting)
         {
             movementInput = Vector2.zero;
         }
+
         m_agentMover.Move(movementInput);
     }
 }
