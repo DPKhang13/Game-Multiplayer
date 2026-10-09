@@ -11,16 +11,21 @@ public class MultiplayerUI : MonoBehaviour
     [SerializeField]
     private UIDocument m_uiDocument;
 
-    // Main Menu Elements
+    // Containers
     private VisualElement m_mainMenuContainer;
+    private VisualElement m_inGameContainer;
+    private VisualElement m_joinCodeContainer;
+
+    // Main Menu Elements
     private Button m_hostButton;
     private Button m_joinMenuButton;
-    private Button m_clientDisconnect;
+
+    // In-Game Elements
+    private Button m_disconnectButton;
 
     // Join Code Popup Elements
-    private VisualElement m_joinCodeContainer;
     private TextField m_inputJoinCode;
-    private Button m_clientButton;
+    private Button m_connectButton;
     private Button m_cancelJoinButton;
 
     // Status Labels
@@ -37,16 +42,19 @@ public class MultiplayerUI : MonoBehaviour
 
         // Query containers
         m_mainMenuContainer = root.Q<VisualElement>("MainMenuContainer");
+        m_inGameContainer = root.Q<VisualElement>("InGameContainer");
         m_joinCodeContainer = root.Q<VisualElement>("JoinCodeContainer");
 
         // Query main buttons
         m_hostButton = root.Q<Button>("ButtonHost");
         m_joinMenuButton = root.Q<Button>("ButtonJoinMenu");
-        m_clientDisconnect = root.Q<Button>("ButtonDisconnect");
+
+        // Query in-game buttons
+        m_disconnectButton = root.Q<Button>("ButtonDisconnect");
 
         // Query join popup elements
         m_inputJoinCode = root.Q<TextField>("InputJoinCode");
-        m_clientButton = root.Q<Button>("ButtonClient");
+        m_connectButton = root.Q<Button>("ButtonClient");
         m_cancelJoinButton = root.Q<Button>("ButtonCancelJoin");
 
         // Query info labels
@@ -65,73 +73,104 @@ public class MultiplayerUI : MonoBehaviour
         if (m_cancelJoinButton != null)
             m_cancelJoinButton.clicked += HideJoinCodeMenu;
 
-        if (m_clientButton != null)
-            m_clientButton.clicked += () => OnStartClient?.Invoke();
+        if (m_connectButton != null)
+            m_connectButton.clicked += () => OnStartClient?.Invoke();
 
-        if (m_clientDisconnect != null)
-            m_clientDisconnect.clicked += () => OnDiconnectClient?.Invoke();
+        if (m_disconnectButton != null)
+            m_disconnectButton.clicked += () => OnDiconnectClient?.Invoke();
 
-        EnableButtons();
+        SetOfflineState();
     }
 
+    /// <summary>
+    /// Hiển thị bảng nhập Join Code
+    /// </summary>
     public void ShowJoinCodeMenu()
     {
         if (m_mainMenuContainer != null)
             m_mainMenuContainer.style.display = DisplayStyle.None;
 
+        if (m_inGameContainer != null)
+            m_inGameContainer.style.display = DisplayStyle.None;
+
         if (m_joinCodeContainer != null)
         {
             m_joinCodeContainer.style.display = DisplayStyle.Flex;
+            m_inputJoinCode?.SetEnabled(true);
+            m_connectButton?.SetEnabled(true);
+            m_cancelJoinButton?.SetEnabled(true);
             m_inputJoinCode?.Focus();
         }
 
         SetStatusText(string.Empty);
     }
 
+    /// <summary>
+    /// Đóng bảng nhập code và quay lại menu chính
+    /// </summary>
     public void HideJoinCodeMenu()
     {
-        if (m_joinCodeContainer != null)
-            m_joinCodeContainer.style.display = DisplayStyle.None;
-
-        if (m_mainMenuContainer != null)
-            m_mainMenuContainer.style.display = DisplayStyle.Flex;
-
+        SetOfflineState();
         SetStatusText(string.Empty);
     }
 
-    public void DisableButtons()
+    /// <summary>
+    /// Trạng thái đang kết nối (tạm thời khoá các nút để tránh bấm lặp lại)
+    /// </summary>
+    public void SetConnectingState()
     {
         m_hostButton?.SetEnabled(false);
         m_joinMenuButton?.SetEnabled(false);
-        m_clientButton?.SetEnabled(false);
+        m_connectButton?.SetEnabled(false);
         m_cancelJoinButton?.SetEnabled(false);
         m_inputJoinCode?.SetEnabled(false);
-        m_clientDisconnect?.SetEnabled(true);
-
-        // Sau khi đã bắt đầu kết nối, đóng popup nhập code và hiển thị lại main container
-        if (m_joinCodeContainer != null && m_joinCodeContainer.style.display == DisplayStyle.Flex)
-        {
-            m_joinCodeContainer.style.display = DisplayStyle.None;
-            if (m_mainMenuContainer != null)
-                m_mainMenuContainer.style.display = DisplayStyle.Flex;
-        }
     }
 
-    public void EnableButtons()
+    /// <summary>
+    /// Trạng thái trong game (cho cả Host lẫn Client): Ẩn các nút tạo phòng, chỉ hiện nút Disconnect
+    /// </summary>
+    public void SetInGameState()
     {
         if (m_mainMenuContainer != null)
-            m_mainMenuContainer.style.display = DisplayStyle.Flex;
+            m_mainMenuContainer.style.display = DisplayStyle.None;
 
         if (m_joinCodeContainer != null)
             m_joinCodeContainer.style.display = DisplayStyle.None;
 
-        m_hostButton?.SetEnabled(true);
-        m_joinMenuButton?.SetEnabled(true);
-        m_clientButton?.SetEnabled(true);
-        m_cancelJoinButton?.SetEnabled(true);
-        m_inputJoinCode?.SetEnabled(true);
-        m_clientDisconnect?.SetEnabled(false);
+        if (m_inGameContainer != null)
+        {
+            m_inGameContainer.style.display = DisplayStyle.Flex;
+            m_disconnectButton?.SetEnabled(true);
+        }
     }
+
+    /// <summary>
+    /// Trạng thái Offline / Sau khi Disconnect / Bị văng khỏi server
+    /// </summary>
+    public void SetOfflineState()
+    {
+        if (m_inGameContainer != null)
+            m_inGameContainer.style.display = DisplayStyle.None;
+
+        if (m_joinCodeContainer != null)
+            m_joinCodeContainer.style.display = DisplayStyle.None;
+
+        if (m_mainMenuContainer != null)
+        {
+            m_mainMenuContainer.style.display = DisplayStyle.Flex;
+            m_hostButton?.SetEnabled(true);
+            m_joinMenuButton?.SetEnabled(true);
+        }
+
+        m_disconnectButton?.SetEnabled(false);
+        m_inputJoinCode?.SetEnabled(true);
+        m_connectButton?.SetEnabled(true);
+        m_cancelJoinButton?.SetEnabled(true);
+    }
+
+    // Các hàm tương thích cũ
+    public void EnableButtons() => SetOfflineState();
+    public void DisableButtons() => SetConnectingState();
 
     public void SetJoinCodeText(string code)
     {

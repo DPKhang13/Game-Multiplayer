@@ -1,11 +1,15 @@
 <ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
     <ui:VisualElement style="flex-grow: 0; align-items: flex-start; padding-top: 10px; padding-left: 10px;">
         
-        <!-- Main Buttons Container -->
+        <!-- Main Buttons Container (Offline) -->
         <ui:VisualElement name="MainMenuContainer" style="align-items: flex-start;">
-            <ui:Button text="Start Host" name="ButtonHost" style="width: 220px; height: 50px; font-size: 24px; background-color: rgb(0, 179, 255); margin-bottom: 6px; -unity-font-style: bold;"/>
-            <ui:Button text="Join Game" name="ButtonJoinMenu" style="width: 220px; height: 50px; font-size: 24px; background-color: rgb(255, 128, 65); margin-bottom: 6px; -unity-font-style: bold;"/>
-            <ui:Button text="Disconnect" name="ButtonDisconnect" enabled="false" style="width: 220px; height: 45px; font-size: 22px; margin-bottom: 10px;"/>
+            <ui:Button text="Start Host" name="ButtonHost" style="width: 220px; height: 50px; font-size: 24px; background-color: rgb(0, 179, 255); margin-bottom: 6px; -unity-font-style: bold; color: rgb(255, 255, 255);"/>
+            <ui:Button text="Join Game" name="ButtonJoinMenu" style="width: 220px; height: 50px; font-size: 24px; background-color: rgb(255, 128, 65); margin-bottom: 6px; -unity-font-style: bold; color: rgb(255, 255, 255);"/>
+        </ui:VisualElement>
+
+        <!-- In-Game Disconnect Container (Active when in game) -->
+        <ui:VisualElement name="InGameContainer" style="display: none; align-items: flex-start;">
+            <ui:Button text="Disconnect" name="ButtonDisconnect" style="width: 220px; height: 48px; font-size: 22px; background-color: rgb(220, 53, 69); margin-bottom: 8px; -unity-font-style: bold; color: rgb(255, 255, 255);"/>
         </ui:VisualElement>
 
         <!-- Join Code Input Container (Hidden by default) -->
@@ -13,8 +17,8 @@
             <ui:Label text="Enter Join Code:" style="font-size: 16px; color: rgb(255, 255, 255); -unity-font-style: bold; margin-bottom: 6px;"/>
             <ui:TextField name="InputJoinCode" style="width: 216px; height: 40px; font-size: 18px; margin-bottom: 10px;"/>
             <ui:VisualElement style="flex-direction: row; width: 100%;">
-                <ui:Button text="Connect" name="ButtonClient" style="width: 120px; height: 42px; font-size: 18px; background-color: rgb(255, 128, 65); margin-right: 6px; -unity-font-style: bold;"/>
-                <ui:Button text="Cancel" name="ButtonCancelJoin" style="width: 90px; height: 42px; font-size: 18px; background-color: rgb(120, 120, 120);"/>
+                <ui:Button text="Connect" name="ButtonClient" style="width: 120px; height: 42px; font-size: 18px; background-color: rgb(255, 128, 65); margin-right: 6px; -unity-font-style: bold; color: rgb(255, 255, 255);"/>
+                <ui:Button text="Cancel" name="ButtonCancelJoin" style="width: 90px; height: 42px; font-size: 18px; background-color: rgb(120, 120, 120); color: rgb(255, 255, 255);"/>
             </ui:VisualElement>
         </ui:VisualElement>
 

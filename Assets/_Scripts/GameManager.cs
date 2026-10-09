@@ -26,6 +26,13 @@ public class GameManager : NetworkBehaviour
             m_multiplayerUI.SetStatusText("Đang khởi tạo Unity Services...");
         }
 
+        // Đăng ký sự kiện ngắt kết nối và kết nối thành công từ Netcode
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback += HandleClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback += HandleClientDisconnected;
+        }
+
         try
         {
             await UnityServices.InitializeAsync();
@@ -50,11 +57,64 @@ public class GameManager : NetworkBehaviour
         }
     }
 
+    public override void OnDestroy()
+    {
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback -= HandleClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback -= HandleClientDisconnected;
+        }
+
+        base.OnDestroy();
+    }
+
+    private void HandleClientConnected(ulong clientId)
+    {
+        // Khi bản thân kết nối thành công (áp dụng cho Client hoặc Host)
+        if (clientId == NetworkManager.Singleton.LocalClientId)
+        {
+            Debug.Log($"[Relay] Bản thân (ClientId: {clientId}) đã kết nối thành công!");
+            if (m_multiplayerUI != null)
+            {
+                m_multiplayerUI.SetInGameState();
+                if (!NetworkManager.Singleton.IsServer)
+                {
+                    m_multiplayerUI.SetStatusText("Đã kết nối vào phòng!");
+                }
+            }
+        }
+    }
+
+    private void HandleClientDisconnected(ulong clientId)
+    {
+        // Khi chính client này bị ngắt kết nối (hoặc Host tắt server)
+        if (clientId == NetworkManager.Singleton.LocalClientId)
+        {
+            Debug.Log("[Relay] Bị ngắt kết nối khỏi máy chủ.");
+            if (m_multiplayerUI != null)
+            {
+                m_multiplayerUI.SetOfflineState();
+                m_multiplayerUI.SetStatusText("Host đã đóng phòng hoặc bị ngắt kết nối.");
+                m_multiplayerUI.SetJoinCodeText(string.Empty);
+            }
+
+            if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
+            {
+                NetworkManager.Singleton.Shutdown();
+            }
+        }
+        else
+        {
+            // Host nhận được thông báo client khác rời phòng
+            Debug.Log($"[Relay] Player {clientId} đã rời phòng.");
+        }
+    }
+
     private async void StartHost()
     {
         if (m_multiplayerUI != null)
         {
-            m_multiplayerUI.DisableButtons();
+            m_multiplayerUI.SetConnectingState();
             m_multiplayerUI.SetStatusText("Đang khởi tạo Host Relay...");
         }
 
@@ -75,6 +135,7 @@ public class GameManager : NetworkBehaviour
 
             if (m_multiplayerUI != null)
             {
+                m_multiplayerUI.SetInGameState();
                 m_multiplayerUI.SetJoinCodeText(joinCode);
                 m_multiplayerUI.SetStatusText($"Host đang chạy. Join Code: {joinCode}");
             }
@@ -86,7 +147,7 @@ public class GameManager : NetworkBehaviour
             Debug.LogError($"[Relay] Lỗi khi tạo Host: {ex.Message}");
             if (m_multiplayerUI != null)
             {
-                m_multiplayerUI.EnableButtons();
+                m_multiplayerUI.SetOfflineState();
                 m_multiplayerUI.SetStatusText($"Lỗi tạo Host: {ex.Message}");
             }
         }
@@ -109,7 +170,7 @@ public class GameManager : NetworkBehaviour
 
         if (m_multiplayerUI != null)
         {
-            m_multiplayerUI.DisableButtons();
+            m_multiplayerUI.SetConnectingState();
             m_multiplayerUI.SetStatusText($"Đang kết nối tới phòng {joinCode}...");
         }
 
@@ -126,20 +187,13 @@ public class GameManager : NetworkBehaviour
             transport.SetRelayServerData(joinAllocation.ToRelayServerData("dtls"));
 
             NetworkManager.StartClient();
-
-            if (m_multiplayerUI != null)
-            {
-                m_multiplayerUI.SetStatusText($"Đang tham gia phòng: {joinCode}");
-            }
-
-            Debug.Log($"[Relay] Đang kết nối tới phòng {joinCode}...");
+            Debug.Log($"[Relay] Đang bắt tay với phòng {joinCode}...");
         }
         catch (Exception ex)
         {
             Debug.LogError($"[Relay] Lỗi kết nối Client: {ex.Message}");
             if (m_multiplayerUI != null)
             {
-                m_multiplayerUI.EnableButtons();
                 m_multiplayerUI.ShowJoinCodeMenu();
                 m_multiplayerUI.SetStatusText($"Lỗi kết nối: {ex.Message}");
             }
@@ -150,11 +204,14 @@ public class GameManager : NetworkBehaviour
     {
         if (m_multiplayerUI != null)
         {
-            m_multiplayerUI.EnableButtons();
+            m_multiplayerUI.SetOfflineState();
             m_multiplayerUI.SetStatusText("Đã ngắt kết nối.");
             m_multiplayerUI.SetJoinCodeText(string.Empty);
         }
 
-        NetworkManager.Shutdown();
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
+        {
+            NetworkManager.Singleton.Shutdown();
+        }
     }
 }
