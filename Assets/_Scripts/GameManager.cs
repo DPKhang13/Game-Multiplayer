@@ -1,103 +1,160 @@
 using System;
-using System.Collections.Generic;
+using System.Threading.Tasks;
 using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
+using Unity.Services.Authentication;
+using Unity.Services.Core;
+using Unity.Services.Relay;
+using Unity.Services.Relay.Models;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public class GameManager : NetworkBehaviour
 {
     [SerializeField]
     private MultiplayerUI m_multiplayerUI;
-    [SerializeField]
-    private GameObject m_playerPrefab;
 
     [SerializeField]
-    private List<ResourcePallet> m_pallets;
+    private int m_maxPlayers = 4;
 
-    private void Start()
+    private async void Start()
     {
         if (m_multiplayerUI != null)
         {
             m_multiplayerUI.OnStartHost += StartHost;
             m_multiplayerUI.OnStartClient += StartClient;
             m_multiplayerUI.OnDiconnectClient += DisconnectClient;
+            m_multiplayerUI.SetStatusText("Đang khởi tạo Unity Services...");
         }
-    }
 
-    public override void OnNetworkSpawn()
-    {
-        base.OnNetworkSpawn();
-        if (IsServer == false)
-            return;
-        NetworkManager.OnClientConnectedCallback += SpawnPlayer;
-        NetworkManager.SceneManager.OnLoadEventCompleted += HandleSceneLoadCompleted;
-        foreach (ResourcePallet pallet in m_pallets)
+        try
         {
-            pallet.OnPalletFilled += CheckWinCondition;
-        }
-    }
+            await UnityServices.InitializeAsync();
 
-    private void CheckWinCondition()
-    {
-        int points = 0;
-        foreach (ResourcePallet pallet in m_pallets)
-        {
-            points += pallet.StackedResoruces;
-        }
-        if (points >= m_pallets.Count * 3)
-        {
-            NetworkManager.SceneManager.LoadScene(
-                SceneManager.GetActiveScene().name, LoadSceneMode.Single);
-        }
-    }
-
-    private void HandleSceneLoadCompleted(string sceneName,
-        LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
-    {
-        foreach (ulong clientId in clientsCompleted)
-        {
-            SpawnPlayer(clientId);
-        }
-    }
-
-    private void SpawnPlayer(ulong clientID)
-    {
-        if (NetworkManager.ConnectedClients[clientID].PlayerObject != null)
-            return;
-        GameObject player = Instantiate(m_playerPrefab);
-        player.GetComponent<NetworkObject>().SpawnAsPlayerObject(clientID, true);
-    }
-
-    public override void OnNetworkDespawn()
-    {
-        if (IsServer)
-        {
-            NetworkManager.OnClientConnectedCallback -= SpawnPlayer;
-            NetworkManager.SceneManager.OnLoadEventCompleted -= HandleSceneLoadCompleted;
-            foreach (ResourcePallet pallet in m_pallets)
+            if (!AuthenticationService.Instance.IsSignedIn)
             {
-                pallet.OnPalletFilled -= CheckWinCondition;
+                await AuthenticationService.Instance.SignInAnonymouslyAsync();
+            }
+
+            if (m_multiplayerUI != null)
+            {
+                m_multiplayerUI.SetStatusText("Đã sẵn sàng kết nối Relay.");
             }
         }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Relay] Lỗi khởi tạo Unity Services: {ex.Message}");
+            if (m_multiplayerUI != null)
+            {
+                m_multiplayerUI.SetStatusText("Lỗi khởi tạo Unity Services!");
+            }
+        }
+    }
 
-        base.OnNetworkDespawn();
+    private async void StartHost()
+    {
+        if (m_multiplayerUI != null)
+        {
+            m_multiplayerUI.DisableButtons();
+            m_multiplayerUI.SetStatusText("Đang khởi tạo Host Relay...");
+        }
+
+        try
+        {
+            if (!AuthenticationService.Instance.IsSignedIn)
+            {
+                await AuthenticationService.Instance.SignInAnonymouslyAsync();
+            }
+
+            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(m_maxPlayers);
+            string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+
+            var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+            transport.SetRelayServerData(allocation.ToRelayServerData("dtls"));
+
+            NetworkManager.StartHost();
+
+            if (m_multiplayerUI != null)
+            {
+                m_multiplayerUI.SetJoinCodeText(joinCode);
+                m_multiplayerUI.SetStatusText($"Host đang chạy. Join Code: {joinCode}");
+            }
+
+            Debug.Log($"[Relay] Khởi tạo Host thành công! Join Code: {joinCode}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Relay] Lỗi khi tạo Host: {ex.Message}");
+            if (m_multiplayerUI != null)
+            {
+                m_multiplayerUI.EnableButtons();
+                m_multiplayerUI.SetStatusText($"Lỗi tạo Host: {ex.Message}");
+            }
+        }
+    }
+
+    private async void StartClient()
+    {
+        string joinCode = m_multiplayerUI != null ? m_multiplayerUI.JoinCode : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(joinCode))
+        {
+            Debug.LogWarning("[Relay] Chưa nhập Join Code!");
+            if (m_multiplayerUI != null)
+            {
+                m_multiplayerUI.ShowJoinCodeMenu();
+                m_multiplayerUI.SetStatusText("Vui lòng nhập Join Code trước khi kết nối!");
+            }
+            return;
+        }
+
+        if (m_multiplayerUI != null)
+        {
+            m_multiplayerUI.DisableButtons();
+            m_multiplayerUI.SetStatusText($"Đang kết nối tới phòng {joinCode}...");
+        }
+
+        try
+        {
+            if (!AuthenticationService.Instance.IsSignedIn)
+            {
+                await AuthenticationService.Instance.SignInAnonymouslyAsync();
+            }
+
+            JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
+
+            var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+            transport.SetRelayServerData(joinAllocation.ToRelayServerData("dtls"));
+
+            NetworkManager.StartClient();
+
+            if (m_multiplayerUI != null)
+            {
+                m_multiplayerUI.SetStatusText($"Đang tham gia phòng: {joinCode}");
+            }
+
+            Debug.Log($"[Relay] Đang kết nối tới phòng {joinCode}...");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Relay] Lỗi kết nối Client: {ex.Message}");
+            if (m_multiplayerUI != null)
+            {
+                m_multiplayerUI.EnableButtons();
+                m_multiplayerUI.ShowJoinCodeMenu();
+                m_multiplayerUI.SetStatusText($"Lỗi kết nối: {ex.Message}");
+            }
+        }
     }
 
     private void DisconnectClient()
     {
-        m_multiplayerUI.EnableButtons();
+        if (m_multiplayerUI != null)
+        {
+            m_multiplayerUI.EnableButtons();
+            m_multiplayerUI.SetStatusText("Đã ngắt kết nối.");
+            m_multiplayerUI.SetJoinCodeText(string.Empty);
+        }
+
         NetworkManager.Shutdown();
-    }
-
-    private void StartClient()
-    {
-        m_multiplayerUI.DisableButtons();
-        NetworkManager.StartClient();
-    }
-
-    private void StartHost()
-    {
-        m_multiplayerUI.DisableButtons();
-        NetworkManager.StartHost();
     }
 }
