@@ -9,14 +9,29 @@ public class BillboardUI : MonoBehaviour
 
     private void Awake()
     {
-        m_cameraTransform = Camera.main.transform;
+        if (Camera.main != null)
+        {
+            m_cameraTransform = Camera.main.transform;
+        }
     }
 
     private void LateUpdate()
     {
+        if (m_cameraTransform == null)
+        {
+            if (Camera.main != null)
+            {
+                m_cameraTransform = Camera.main.transform;
+            }
+            else
+            {
+                return;
+            }
+        }
+
         Vector3 direction = transform.position - m_cameraTransform.position;
         direction.y = 0; // Keep the billboard upright
-        if(direction.sqrMagnitude > 0.001f)
+        if (direction.sqrMagnitude > 0.001f)
         {
             transform.rotation = Quaternion.LookRotation(direction);
         }
